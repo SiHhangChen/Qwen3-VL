@@ -1,6 +1,12 @@
 import re
 import os
 
+
+def _memer_data_dir() -> str:
+    _dir = os.getenv("MEMER_DATA_DIR", ".")
+    return _dir.rstrip("/")
+
+
 # Define placeholders for dataset paths
 CAMBRIAN_737K = {
     "annotation_path": "PATH_TO_CAMBRIAN_737K_ANNOTATION",
@@ -27,11 +33,36 @@ VIDEOCHATGPT = {
     "data_path": "PATH_TO_VIDEOCHATGPT_DATA",
 }
 
-# MemER WA-01 export. Paths are supplied by the launch script so this nested
-# Qwen checkout remains portable across machines.
-MEMER_WA01 = {
-    "annotation_path": os.environ.get("MEMER_WA01_ANNOTATION_PATH", ""),
-    "data_path": os.environ.get("MEMER_WA01_DATA_PATH", ""),
+# Published MemER SFT datasets. The default root is repo-local; override with
+# MEMER_DATA_DIR. The *_test variant slices the shared "all" annotation file
+# by episode_index (handled in data_processor), so frames never cross the split.
+WA01_MEMER_SFT = {
+    "annotation_path": f"{_memer_data_dir()}/wa01_sft_planner_all/train.json",
+    "data_path": f"{_memer_data_dir()}/wa01_sft_planner_all",
+    "episode_index_min": 0,
+    "episode_index_max": 159,
+}
+
+WA01_MEMER_SFT_TEST = {
+    "annotation_path": f"{_memer_data_dir()}/wa01_sft_planner_all/train.json",
+    "data_path": f"{_memer_data_dir()}/wa01_sft_planner_all",
+    "episode_index_min": 160,
+    "episode_index_max": 199,
+}
+
+WA01_MEMER_SFT_50_STRIDE10_V2 = {
+    "annotation_path": f"{_memer_data_dir()}/wa01_sft_50_stride10_v2/train.json",
+    "data_path": f"{_memer_data_dir()}/wa01_sft_50_stride10_v2",
+}
+
+TS01_MEMER_SFT_50_STRIDE10_V2 = {
+    "annotation_path": f"{_memer_data_dir()}/ts01_sft_50_stride10_v2/train.json",
+    "data_path": f"{_memer_data_dir()}/ts01_sft_50_stride10_v2",
+}
+
+WR03_MEMER_SFT_50_STRIDE10_V2 = {
+    "annotation_path": f"{_memer_data_dir()}/wr03_sft_50_stride10_v2/train.json",
+    "data_path": f"{_memer_data_dir()}/wr03_sft_50_stride10_v2",
 }
 
 data_dict = {
@@ -40,7 +71,11 @@ data_dict = {
     "mp_doc": MP_DOC,
     "clevr_mc": CLEVR_MC,
     "videochatgpt": VIDEOCHATGPT,
-    "memer_wa01": MEMER_WA01,
+    "wa01_memer_sft": WA01_MEMER_SFT,
+    "wa01_memer_sft_test": WA01_MEMER_SFT_TEST,
+    "wa01_memer_sft_50_stride10_v2": WA01_MEMER_SFT_50_STRIDE10_V2,
+    "ts01_memer_sft_50_stride10_v2": TS01_MEMER_SFT_50_STRIDE10_V2,
+    "wr03_memer_sft_50_stride10_v2": WR03_MEMER_SFT_50_STRIDE10_V2,
 }
 
 

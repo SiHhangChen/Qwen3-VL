@@ -156,8 +156,16 @@ def _build_messages(item: Dict[str, Any], base_path: Path) -> List[Dict[str, Any
     ]
 
     messages = []
+    role_map = {
+        "system": "system",
+        "human": "user",
+        "gpt": "assistant",
+    }
     for turn in item["conversations"]:
-        role = "user" if turn["from"] == "human" else "assistant"
+        try:
+            role = role_map[turn["from"]]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported conversation role: {turn['from']}") from exc
         text: str = turn["value"]
 
         if role == "user":
@@ -274,6 +282,34 @@ class LazySupervisedDataset(Dataset):
                 annotations = read_jsonl(data["annotation_path"])
             else:
                 annotations = json.load(open(data["annotation_path"], "r"))
+
+            # MemER exports all episodes into one annotation file. Keep the
+            # split at episode level so frames from one episode never cross it.
+            episode_min = data.get("episode_index_min")
+            episode_max = data.get("episode_index_max")
+            if episode_min is not None or episode_max is not None:
+                def _episode_index(annotation):
+                    # A single annotation may be a wrapper dict, a flattened
+                    # frame, or a list of frames. Resolve a representative
+                    # episode index whichever layout the export uses.
+                    if isinstance(annotation, list):
+                        annotation = annotation[0] if annotation else {}
+                    if isinstance(annotation, dict) and "episode_index" in annotation:
+                        return annotation["episode_index"]
+                    return annotation.get("metadata", {}).get("episode_index")
+
+                annotations = [ann for ann in annotations if _episode_index(ann) is not None]
+                annotations = [
+                    ann
+                    for ann in annotations
+                    if (episode_min is None or _episode_index(ann) >= episode_min)
+                    and (episode_max is None or _episode_index(ann) <= episode_max)
+                ]
+                rank0_print(
+                    f"episode split [{episode_min}, {episode_max}] selected "
+                    f"{len(annotations)} annotations"
+                )
+
             sampling_rate = data.get("sampling_rate", 1.0)
             if sampling_rate < 1.0:
                 annotations = random.sample(
