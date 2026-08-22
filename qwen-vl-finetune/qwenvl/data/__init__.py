@@ -1,4 +1,5 @@
 import re
+import os
 
 # Define placeholders for dataset paths
 CAMBRIAN_737K = {
@@ -26,12 +27,20 @@ VIDEOCHATGPT = {
     "data_path": "PATH_TO_VIDEOCHATGPT_DATA",
 }
 
+# MemER WA-01 export. Paths are supplied by the launch script so this nested
+# Qwen checkout remains portable across machines.
+MEMER_WA01 = {
+    "annotation_path": os.environ.get("MEMER_WA01_ANNOTATION_PATH", ""),
+    "data_path": os.environ.get("MEMER_WA01_DATA_PATH", ""),
+}
+
 data_dict = {
     "cambrian_737k": CAMBRIAN_737K,
     "cambrian_737k_pack": CAMBRIAN_737K_PACK,
     "mp_doc": MP_DOC,
     "clevr_mc": CLEVR_MC,
     "videochatgpt": VIDEOCHATGPT,
+    "memer_wa01": MEMER_WA01,
 }
 
 
