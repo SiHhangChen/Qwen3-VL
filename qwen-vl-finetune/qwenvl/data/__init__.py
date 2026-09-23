@@ -36,6 +36,11 @@ VIDEOCHATGPT = {
 # Published MemER SFT datasets. The default root is repo-local; override with
 # MEMER_DATA_DIR. The *_test variant slices the shared "all" annotation file
 # by episode_index (handled in data_processor), so frames never cross the split.
+#
+# The benchmark release contains one Qwen-format directory per task. Keep the
+# directories separate here instead of merging their JSON files: every
+# annotation has paths relative to its own directory, and data_processor adds
+# the corresponding data_path to each record when multiple datasets are used.
 WA01_MEMER_SFT = {
     "annotation_path": f"{_memer_data_dir()}/wa01_sft_planner_all/train.json",
     "data_path": f"{_memer_data_dir()}/wa01_sft_planner_all",
@@ -65,6 +70,31 @@ WR03_MEMER_SFT_50_STRIDE10_V2 = {
     "data_path": f"{_memer_data_dir()}/wr03_sft_50_stride10_v2",
 }
 
+
+def _memer_release_config(dirname: str):
+    """Build a config for a release directory under ``MEMER_DATA_DIR``."""
+    return {
+        "annotation_path": f"{_memer_data_dir()}/{dirname}/train.json",
+        "data_path": f"{_memer_data_dir()}/{dirname}",
+    }
+
+
+# All-task MemBench release. Names intentionally include the release version so
+# a future regenerated dataset can be registered without silently changing an
+# existing experiment.
+TM01_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("tm01_sft_50_stride10_v2")
+TM02_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("tm02_sft_50_stride10_v2")
+TS02_MEMER_SFT_50_STRIDE10_V3 = _memer_release_config("ts02_sft_50_stride10_v3")
+TS03_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("ts03_sft_50_stride10_v2")
+TS04_MEMER_SFT_50_STRIDE10_V4 = _memer_release_config("ts04_sft_50_stride10_v4")
+WA02_MEMER_SFT_50_STRIDE10_V4 = _memer_release_config("wa02_sft_50_stride10_v4")
+WA03_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("wa03_sft_50_stride10_v2")
+WA05_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("wa05_sft_50_stride10_v2")
+WR01_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("wr01_sft_50_stride10_v2")
+WR05_MEMER_SFT_50_STRIDE10_V3 = _memer_release_config("wr05_sft_50_stride10_v3")
+WR06_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("wr06_sft_50_stride10_v2")
+WX01_MEMER_SFT_50_STRIDE10_V2 = _memer_release_config("wx01_sft_50_stride10_v2")
+
 data_dict = {
     "cambrian_737k": CAMBRIAN_737K,
     "cambrian_737k_pack": CAMBRIAN_737K_PACK,
@@ -76,7 +106,35 @@ data_dict = {
     "wa01_memer_sft_50_stride10_v2": WA01_MEMER_SFT_50_STRIDE10_V2,
     "ts01_memer_sft_50_stride10_v2": TS01_MEMER_SFT_50_STRIDE10_V2,
     "wr03_memer_sft_50_stride10_v2": WR03_MEMER_SFT_50_STRIDE10_V2,
+    "tm01_memer_sft_50_stride10_v2": TM01_MEMER_SFT_50_STRIDE10_V2,
+    "tm02_memer_sft_50_stride10_v2": TM02_MEMER_SFT_50_STRIDE10_V2,
+    "ts02_memer_sft_50_stride10_v3": TS02_MEMER_SFT_50_STRIDE10_V3,
+    "ts03_memer_sft_50_stride10_v2": TS03_MEMER_SFT_50_STRIDE10_V2,
+    "ts04_memer_sft_50_stride10_v4": TS04_MEMER_SFT_50_STRIDE10_V4,
+    "wa02_memer_sft_50_stride10_v4": WA02_MEMER_SFT_50_STRIDE10_V4,
+    "wa03_memer_sft_50_stride10_v2": WA03_MEMER_SFT_50_STRIDE10_V2,
+    "wa05_memer_sft_50_stride10_v2": WA05_MEMER_SFT_50_STRIDE10_V2,
+    "wr01_memer_sft_50_stride10_v2": WR01_MEMER_SFT_50_STRIDE10_V2,
+    "wr05_memer_sft_50_stride10_v3": WR05_MEMER_SFT_50_STRIDE10_V3,
+    "wr06_memer_sft_50_stride10_v2": WR06_MEMER_SFT_50_STRIDE10_V2,
+    "wx01_memer_sft_50_stride10_v2": WX01_MEMER_SFT_50_STRIDE10_V2,
 }
+
+# Local final MemBench release.  The exported directories intentionally use
+# short task names (tm01/, wa01/, ...), while the registry names carry the
+# immutable release version so future exports cannot silently replace a run.
+for _task_name in (
+    "tm01",
+    "tm02",
+    "ts02",
+    "ts03",
+    "wa01",
+    "wa05",
+    "wr01",
+    "wr08",
+    "wx01",
+):
+    data_dict[f"{_task_name}_memer_final_v1"] = _memer_release_config(_task_name)
 
 
 def parse_sampling_rate(dataset_name):

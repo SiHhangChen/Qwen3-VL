@@ -4,11 +4,12 @@ set -euo pipefail
 QWEN_FINETUNE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 QWEN_REPO_DIR="$(cd -- "${QWEN_FINETUNE_DIR}/.." && pwd)"
 
-QWEN_ENV_DIR="${QWEN_ENV_DIR:-${HOME}/.conda/envs/memer-qwen3vl}"
+QWEN_ENV_DIR="${QWEN_ENV_DIR:-${QWEN_REPO_DIR}/../../.venvs/memer-qwen3vl}"
 TORCHRUN_BIN="${TORCHRUN_BIN:-${QWEN_ENV_DIR}/bin/torchrun}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
 NPROC_PER_NODE="${NPROC_PER_NODE:-2}"
 MAX_STEPS="${MAX_STEPS:-5}"
+NUM_TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-15}"
 OUTPUT_DIR="${OUTPUT_DIR:-${QWEN_REPO_DIR}/checkpoints/wa01-memer-qwen3vl-4b}"
 # The base Qwen3-VL-4B-Instruct weights path is machine-specific: set this
 # explicitly (e.g. export MODEL_PATH=/path/to/Qwen3-VL-4B-Instruct) before run.
@@ -19,10 +20,40 @@ GRAD_ACCUM_STEPS="${GRAD_ACCUM_STEPS:-64}"
 MAX_PIXELS="${MAX_PIXELS:-115200}"
 MIN_PIXELS="${MIN_PIXELS:-50176}"
 SAVE_STEPS="${SAVE_STEPS:-500}"
+SAVE_STRATEGY="${SAVE_STRATEGY:-steps}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-2}"
 DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-4}"
 RESUME="${RESUME:-false}"
 DRY_RUN="${DRY_RUN:-false}"
+
+# Do not trust a stale CUDA_HOME inherited from the login shell. DeepSpeed
+# invokes nvcc while constructing its optimizer/op builders, so an old path
+# such as /usr/local/cuda-11.1 makes argument parsing fail before training can
+# start. CUDA_TOOLKIT_ROOT can be used to select another installed toolkit.
+CUDA_TOOLKIT_ROOT="${CUDA_TOOLKIT_ROOT:-${CUDA_HOME:-/usr/local/cuda}}"
+if [[ ! -x "${CUDA_TOOLKIT_ROOT%/}/bin/nvcc" ]]; then
+  if [[ -x /usr/local/cuda/bin/nvcc ]]; then
+    CUDA_TOOLKIT_ROOT=/usr/local/cuda
+  elif command -v nvcc >/dev/null 2>&1; then
+    CUDA_TOOLKIT_ROOT="$(cd -- "$(dirname -- "$(command -v nvcc)")/.." && pwd)"
+  else
+    echo "No usable CUDA toolkit/nvcc was found." >&2
+    echo "Set CUDA_TOOLKIT_ROOT to a CUDA 12 toolkit directory." >&2
+    exit 1
+  fi
+fi
+CUDA_TOOLKIT_ROOT="${CUDA_TOOLKIT_ROOT%/}"
+export CUDA_HOME="${CUDA_TOOLKIT_ROOT}"
+export CUDA_PATH="${CUDA_TOOLKIT_ROOT}"
+export PATH="${CUDA_TOOLKIT_ROOT}/bin:${PATH}"
+export LD_LIBRARY_PATH="${CUDA_TOOLKIT_ROOT}/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+# Triton 3.x derives its cache from TRITON_HOME/.triton/{cache,autotune}.
+# Keep this cache in the project workspace rather than relying on a possibly
+# missing or unwritable login-home directory.
+TRITON_HOME="${TRITON_HOME:-${QWEN_REPO_DIR}/../..}"
+mkdir -p "${TRITON_HOME}/.triton/cache" "${TRITON_HOME}/.triton/autotune"
+export TRITON_HOME
 
 require_positive_integer() {
   local name="$1"
@@ -43,10 +74,18 @@ require_boolean() {
 }
 
 for setting in \
-  NPROC_PER_NODE MAX_STEPS PER_DEVICE_BATCH_SIZE GRAD_ACCUM_STEPS \
+  NPROC_PER_NODE NUM_TRAIN_EPOCHS PER_DEVICE_BATCH_SIZE GRAD_ACCUM_STEPS \
   MAX_PIXELS MIN_PIXELS SAVE_STEPS SAVE_TOTAL_LIMIT DATALOADER_NUM_WORKERS; do
   require_positive_integer "${setting}" "${!setting}"
 done
+if [[ ! "${MAX_STEPS}" =~ ^-1$|^[1-9][0-9]*$ ]]; then
+  echo "MAX_STEPS must be -1 (epoch based) or a positive integer, got: ${MAX_STEPS}" >&2
+  exit 2
+fi
+if [[ "${SAVE_STRATEGY}" != "steps" && "${SAVE_STRATEGY}" != "epoch" ]]; then
+  echo "SAVE_STRATEGY must be steps or epoch, got: ${SAVE_STRATEGY}" >&2
+  exit 2
+fi
 require_boolean RESUME "${RESUME}"
 require_boolean DRY_RUN "${DRY_RUN}"
 
@@ -98,7 +137,7 @@ fi
 
 export CUDA_VISIBLE_DEVICES
 
-export QWEN_VL_ATTN_IMPL="flash_attention_2"
+export QWEN_VL_ATTN_IMPL="${QWEN_VL_ATTN_IMPL:-flash_attention_2}"
 
 train_command=(
   "${TORCHRUN_BIN}"
@@ -113,7 +152,7 @@ train_command=(
   --tune_mm_llm True \
   --bf16 \
   --output_dir "${OUTPUT_DIR}" \
-  --num_train_epochs 15 \
+  --num_train_epochs "${NUM_TRAIN_EPOCHS}" \
   --max_steps "${MAX_STEPS}" \
   --per_device_train_batch_size "${PER_DEVICE_BATCH_SIZE}" \
   --per_device_eval_batch_size 1 \
@@ -122,7 +161,7 @@ train_command=(
   --max_pixels "${MAX_PIXELS}" \
   --min_pixels "${MIN_PIXELS}" \
   --eval_strategy no \
-  --save_strategy steps \
+  --save_strategy "${SAVE_STRATEGY}" \
   --save_steps "${SAVE_STEPS}" \
   --save_total_limit "${SAVE_TOTAL_LIMIT}" \
   --learning_rate 6e-5 \
@@ -148,7 +187,11 @@ echo "  GPUs                 : ${CUDA_VISIBLE_DEVICES} (${NPROC_PER_NODE})"
 echo "  per-device / accum   : ${PER_DEVICE_BATCH_SIZE} / ${GRAD_ACCUM_STEPS}"
 echo "  global batch size    : ${global_batch_size}"
 echo "  optimization steps   : ${MAX_STEPS}"
+echo "  train epochs         : ${NUM_TRAIN_EPOCHS}"
+echo "  save strategy        : ${SAVE_STRATEGY}"
 echo "  resume               : ${RESUME}"
+echo "  CUDA toolkit         : ${CUDA_HOME} ($(${CUDA_HOME}/bin/nvcc --version | tail -n 1))"
+echo "  Triton home          : ${TRITON_HOME}"
 echo -n "Training command:"
 printf ' %q' "${train_command[@]}"
 echo

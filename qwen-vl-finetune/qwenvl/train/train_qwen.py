@@ -203,4 +203,6 @@ def train(attn_implementation="flash_attention_2"):
 
 
 if __name__ == "__main__":
-    train(attn_implementation="flash_attention_2")
+    # FlashAttention 2 is the recommended training backend. Allow SDPA for
+    # environment/model smoke tests or hosts where flash-attn is unavailable.
+    train(attn_implementation=os.getenv("QWEN_VL_ATTN_IMPL", "flash_attention_2"))
